@@ -1,0 +1,54 @@
+services:
+  warehouse:
+    image: postgres:16-alpine
+    container_name: flasheats_wh
+    environment:
+      POSTGRES_USER: ${PGUSER:-flasheats}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-flasheats}
+      POSTGRES_DB: ${PGDATABASE:-flasheats_wh}
+    ports:
+      - "${PGPORT:-5432}:5432"
+    volumes:
+      - wh_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-flasheats} -d ${PGDATABASE:-flasheats_wh}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  dispatch_api:
+    build:
+      context: ./sources/api
+    container_name: flasheats_dispatch_api
+    ports:
+      - "${DISPATCH_API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  pipeline:
+    build:
+      context: .
+    container_name: flasheats_pipeline
+    depends_on:
+      warehouse:
+        condition: service_healthy
+      dispatch_api:
+        condition: service_healthy
+    environment:
+      PGHOST: warehouse
+      PGUSER: ${PGUSER:-flasheats}
+      PGPASSWORD: ${PGPASSWORD:-flasheats}
+      PGDATABASE: ${PGDATABASE:-flasheats_wh}
+      DISPATCH_API_URL: http://dispatch_api:8000
+    volumes:
+      # Artefacts land back on the host so they stay reviewable and diffable.
+      - ./out:/app/out
+      - ./logs:/app/logs
+      - ./data:/app/data
+    profiles: ["tools"]
+
+volumes:
+  wh_data:

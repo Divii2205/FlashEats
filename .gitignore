@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Local config (committed as .env.example instead)
+.env
+
+# Pipeline artefacts — reproducible from `make run`, not source of truth
+data/raw/
+data/processed/
+logs/
+out/
+
+# OS
+Thumbs.db
+.DS_Store

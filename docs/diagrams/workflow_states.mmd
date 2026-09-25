@@ -1,0 +1,29 @@
+stateDiagram-v2
+    direction LR
+    [*] --> Created
+
+    Created   --> Assigned   : assigned_at<br/>(Dispatch API)
+    Assigned  --> Ready      : status = READY<br/>(restaurant_status.csv)
+    Ready     --> PickedUp   : pickup_at<br/>(SQLite orders)
+    Assigned  --> PickedUp   : pickup_at<br/><i>Ready unobserved for 90% of orders</i>
+    PickedUp  --> Delivered  : actual_delivery_at
+    Created   --> Cancelled  : final_status = cancelled
+
+    Delivered --> [*]
+    Cancelled --> [*]
+
+    note right of Assigned
+        Dispatch latency: ~2.3 min median.
+        Identical for late and on-time orders,
+        so dispatch timing is NOT the constraint.
+    end note
+
+    note right of PickedUp
+        assigned to pickup is where delay lives:
+        20.5 min on-time vs 37.5 min late.
+        +17 min of the ~21 min total excess.
+    end note
+
+    note right of Delivered
+        Transit contributes only ~+4 min.
+    end note

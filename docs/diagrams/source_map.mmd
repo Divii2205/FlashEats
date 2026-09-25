@@ -1,0 +1,36 @@
+flowchart LR
+    subgraph SRC["Client source systems"]
+        direction TB
+        DB[("SQLite<br/>flasheats.db<br/><i>orders, customers,<br/>drivers, restaurants</i>")]
+        API{{"Dispatch API<br/><i>paginated, injects<br/>500 and 429</i>"}}
+        JSON["driver_events.json<br/><i>nested: driver to events[]</i>"]
+        CSV["7 operational CSVs<br/><i>events, status, tickets,<br/>interactions, interventions</i>"]
+    end
+
+    subgraph WH["Warehouse (Postgres)"]
+        direction TB
+        RAW["<b>raw</b><br/>as-received, TEXT"]
+        STG["<b>staging</b><br/>typed, deduped<br/>+ quarantine"]
+        MRT["<b>marts</b><br/>order lifecycle<br/>+ event facts"]
+        MET["<b>metrics</b><br/>M1..M5"]
+    end
+
+    META[("<b>meta</b><br/>run_log<br/>source_manifest<br/>validation_results")]
+    OUT["out/<br/>metrics.csv<br/>evidence_table.md<br/>validation_report.json"]
+
+    DB   -->|SQL| RAW
+    API  -->|API, retried| RAW
+    JSON -->|file, nested| RAW
+    CSV  -->|file| RAW
+
+    RAW --> STG --> MRT --> MET --> OUT
+    RAW -.-> META
+    STG -.-> META
+    MET -.-> META
+
+    classDef src fill:#e8f0fe,stroke:#4285f4,color:#111
+    classDef wh  fill:#e6f4ea,stroke:#34a853,color:#111
+    classDef mta fill:#fef7e0,stroke:#f9ab00,color:#111
+    class DB,API,JSON,CSV src
+    class RAW,STG,MRT,MET wh
+    class META,OUT mta
