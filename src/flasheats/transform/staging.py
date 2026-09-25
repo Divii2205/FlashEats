@@ -129,3 +129,30 @@ def build_sources(ctx) -> dict:
         "detail": f"{len(tables)} tables from {statements} statements",
         "counts": counts,
     }
+
+
+def build_marts(ctx) -> dict:
+    """Build the workflow model: dimensions, the event fact, and the order lifecycle fact."""
+    from ..db import run_sql_file, scalar
+
+    path = ctx.cfg.sql_dir / "transform" / "020_marts.sql"
+    run_sql_file(ctx.conn, path, {
+        "run_date": ctx.run_date,
+        "material_threshold": ctx.cfg.material_late_threshold_min,
+    })
+
+    tables = ["dim_restaurant", "dim_driver", "dim_customer",
+              "fct_order_events", "fct_order_lifecycle"]
+    counts = {
+        t: scalar(ctx.conn, f"SELECT count(*) FROM marts.{t} WHERE run_date = %s", (ctx.run_date,))
+        for t in tables
+    }
+    measurable = scalar(ctx.conn,
+        "SELECT count(*) FROM marts.fct_order_lifecycle WHERE run_date=%s AND is_measurable",
+        (ctx.run_date,))
+    return {
+        "rows_out": counts["fct_order_lifecycle"],
+        "detail": (f"events={counts['fct_order_events']} lifecycle={counts['fct_order_lifecycle']} "
+                   f"measurable={measurable}"),
+        "counts": counts,
+    }

@@ -64,6 +64,10 @@ def cmd_run(args) -> int:
                 r.update(staging.build_sources(ctx))
             conn.commit()
 
+            with ctx.step("transform.marts") as r:
+                r.update(staging.build_marts(ctx))
+            conn.commit()
+
             with ctx.step("validate") as r:
                 orders = read_df(
                     ctx.conn, "SELECT * FROM staging.orders WHERE run_date = %s", (run_date,)
