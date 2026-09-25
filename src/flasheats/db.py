@@ -16,9 +16,27 @@ def connect(cfg: Config) -> psycopg.Connection:
     return psycopg.connect(cfg.dsn, autocommit=False)
 
 
-def run_sql_file(conn: psycopg.Connection, path: Path) -> None:
+def run_sql_file(conn: psycopg.Connection, path: Path, params: dict | None = None) -> int:
+    """Execute a .sql file.
+
+    When parameters are supplied, statements are executed one at a time: psycopg's extended
+    protocol (which is what makes parameter binding safe) does not accept multiple statements in a
+    single execute. Splitting here keeps the SQL files readable as ordinary scripts.
+    """
+    sql = path.read_text(encoding="utf-8")
+    if params is None:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+        return 1
+
+    statements = [s.strip() for s in sql.split(";")]
+    statements = [s for s in statements
+                  if s and not all(line.strip().startswith("--") or not line.strip()
+                                   for line in s.splitlines())]
     with conn.cursor() as cur:
-        cur.execute(path.read_text(encoding="utf-8"))
+        for statement in statements:
+            cur.execute(statement, params)
+    return len(statements)
 
 
 def run_sql_dir(conn: psycopg.Connection, directory: Path) -> list[str]:

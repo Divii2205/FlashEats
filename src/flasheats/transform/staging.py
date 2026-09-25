@@ -108,3 +108,24 @@ def build_orders(ctx) -> dict:
                    f"unparsed_delivery_ts={int(out.actual_delivery_at.isna().sum())}"),
         "conflicting_dupes": len(conflicting_ids),
     }
+
+
+def build_sources(ctx) -> dict:
+    """Load every non-order source from raw into staging via the declarative SQL transform."""
+    from ..db import run_sql_file, scalar
+
+    path = ctx.cfg.sql_dir / "transform" / "010_staging_sources.sql"
+    statements = run_sql_file(ctx.conn, path, {"run_date": ctx.run_date})
+
+    tables = ["dispatch", "restaurant_status", "order_events", "driver_events",
+              "support_tickets", "customer_interactions", "order_interventions",
+              "customer_app_actions", "client_order_outcomes"]
+    counts = {
+        t: scalar(ctx.conn, f"SELECT count(*) FROM staging.{t} WHERE run_date = %s", (ctx.run_date,))
+        for t in tables
+    }
+    return {
+        "rows_out": sum(counts.values()),
+        "detail": f"{len(tables)} tables from {statements} statements",
+        "counts": counts,
+    }

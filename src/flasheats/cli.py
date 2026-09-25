@@ -16,6 +16,7 @@ from .metrics import compute, publish
 from .run_context import EXIT_OK, PipelineError, RunContext
 from .transform import staging
 from .validate import engine
+from .validate.cross_source import CROSS_SOURCE_RULES
 from .validate.rules import ORDER_RULES
 
 
@@ -59,6 +60,10 @@ def cmd_run(args) -> int:
                 r.update(staging.build_orders(ctx))
             conn.commit()
 
+            with ctx.step("transform.staging_sources") as r:
+                r.update(staging.build_sources(ctx))
+            conn.commit()
+
             with ctx.step("validate") as r:
                 orders = read_df(
                     ctx.conn, "SELECT * FROM staging.orders WHERE run_date = %s", (run_date,)
@@ -69,7 +74,7 @@ def cmd_run(args) -> int:
                     ctx.conn, "SELECT * FROM raw.orders WHERE run_date = %s", (run_date,)
                 )
                 results = engine.evaluate(
-                    ctx, ORDER_RULES,
+                    ctx, ORDER_RULES + CROSS_SOURCE_RULES,
                     orders=orders,
                     raw_orders=raw_orders,
                     run_date=run_date,

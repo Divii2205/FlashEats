@@ -11,6 +11,9 @@ from .rules import Rule, RuleResult
 
 
 def evaluate(ctx, rules: list[Rule], **inputs) -> list[dict]:
+    # Cross-source rules query the warehouse directly rather than receiving a dataframe, so the
+    # run context is injected here instead of at every call site.
+    inputs["ctx"] = ctx
     results: list[dict] = []
     for rule in rules:
         try:
