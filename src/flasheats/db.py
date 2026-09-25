@@ -16,12 +16,67 @@ def connect(cfg: Config) -> psycopg.Connection:
     return psycopg.connect(cfg.dsn, autocommit=False)
 
 
+def split_statements(sql: str) -> list[str]:
+    """Split a SQL script into statements on semicolons that are actually statement terminators.
+
+    A naive split on ";" corrupts any script containing a semicolon inside a string literal or a
+    comment — which several metric definitions do, because their caveat text is prose. This walks
+    the script tracking quote and comment state instead.
+    """
+    statements: list[str] = []
+    current: list[str] = []
+    in_string = in_line_comment = in_block_comment = False
+    i = 0
+    while i < len(sql):
+        ch = sql[i]
+        nxt = sql[i + 1] if i + 1 < len(sql) else ""
+
+        if in_line_comment:
+            if ch == "\n":
+                in_line_comment = False
+            current.append(ch)
+        elif in_block_comment:
+            current.append(ch)
+            if ch == "*" and nxt == "/":
+                current.append(nxt); i += 1
+                in_block_comment = False
+        elif in_string:
+            current.append(ch)
+            if ch == "'":
+                if nxt == "'":          # '' is an escaped quote, not a terminator
+                    current.append(nxt); i += 1
+                else:
+                    in_string = False
+        elif ch == "'":
+            in_string = True
+            current.append(ch)
+        elif ch == "-" and nxt == "-":
+            in_line_comment = True
+            current.append(ch)
+        elif ch == "/" and nxt == "*":
+            in_block_comment = True
+            current.append(ch)
+        elif ch == ";":
+            statements.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+        i += 1
+
+    statements.append("".join(current))
+
+    # Drop fragments that are only whitespace or comments.
+    return [s.strip() for s in statements
+            if s.strip() and not all(line.strip().startswith("--") or not line.strip()
+                                     for line in s.splitlines())]
+
+
 def run_sql_file(conn: psycopg.Connection, path: Path, params: dict | None = None) -> int:
     """Execute a .sql file.
 
     When parameters are supplied, statements are executed one at a time: psycopg's extended
     protocol (which is what makes parameter binding safe) does not accept multiple statements in a
-    single execute. Splitting here keeps the SQL files readable as ordinary scripts.
+    single execute.
     """
     sql = path.read_text(encoding="utf-8")
     if params is None:
@@ -29,10 +84,7 @@ def run_sql_file(conn: psycopg.Connection, path: Path, params: dict | None = Non
             cur.execute(sql)
         return 1
 
-    statements = [s.strip() for s in sql.split(";")]
-    statements = [s for s in statements
-                  if s and not all(line.strip().startswith("--") or not line.strip()
-                                   for line in s.splitlines())]
+    statements = split_statements(sql)
     with conn.cursor() as cur:
         for statement in statements:
             cur.execute(statement, params)
