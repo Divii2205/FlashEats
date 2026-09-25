@@ -11,7 +11,7 @@ import pandas as pd
 
 from .config import CONFIG
 from .db import connect, read_df, run_sql_dir
-from .ingest import sqlite_source
+from .ingest import dispatch_api, files, sqlite_source
 from .metrics import compute, publish
 from .run_context import EXIT_OK, PipelineError, RunContext
 from .transform import staging
@@ -43,6 +43,16 @@ def cmd_run(args) -> int:
                 counts = sqlite_source.land(ctx)
                 r["rows_out"] = sum(counts.values())
                 r["detail"] = ", ".join(f"{k}={v}" for k, v in counts.items())
+            conn.commit()
+
+            with ctx.step("ingest.files") as r:
+                counts = files.land_all(ctx)
+                r["rows_out"] = sum(counts.values())
+                r["detail"] = f"{len(counts)} file sources"
+            conn.commit()
+
+            with ctx.step("ingest.dispatch_api") as r:
+                r["rows_out"] = dispatch_api.land(ctx)
             conn.commit()
 
             with ctx.step("transform.staging_orders") as r:
