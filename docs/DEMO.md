@@ -1,58 +1,138 @@
-# Demo script — short version (record this one, ~1 min 50)
+# Demo script — record this one
 
-Plain words. Five beats. Screen cue in brackets, then what you say.
+**Runs about 4 minutes.** The brief asks for *"a 3–5 minute demo using the GitHub project,
+explaining one important FDE judgement call you made"* — so this is built to land in that window,
+opens on the GitHub repo, and is organised around a single judgement call rather than a tour.
+
+Simple words throughout. Screen cue in brackets, then what you say.
 
 ---
 
-**[Show README]**
+### 1. Open on the repo · ~15 sec
 
-"FlashEats came to us with a problem. Deliveries are late, and customers say the ETA can't be
-trusted. They want to buy an AI tool that predicts delays. They asked me to check first."
+**[GitHub repo page]**
+
+"This is the project on GitHub. Everything I'm about to show you lives in here — the code, the
+data, and the write-ups."
+
+### 2. The problem and the sources · ~30 sec
+
+**[Scroll the README]**
+
+"FlashEats had a problem. Deliveries were late, customers didn't trust the arrival time, and they
+wanted to buy an AI tool that predicts delays. They asked me to check the data first.
+
+Their data sat in four places — a database, an API, an event file from the driver app, and some
+hand-kept spreadsheets. I pulled from all four."
+
+### 3. The judgement call · ~90 sec — *this is the heart of it, don't rush*
 
 **[Open `sources/data/client_metric_definitions.json`]**
 
-"Their number is fifty-six percent late. But look at this file. Four people at the company each
-mean something different by the word *late*. And the last line says nobody owns the definition."
+"Now, the judgement call.
 
-**[Open `out/dashboard.html` — top]**
+Before I calculated anything, I went looking for who decides what the word *late* means. This is
+what I found. Four people at the company, four different answers. The head of operations says one
+second past the promised time is late. The support lead says only past ten minutes counts. Finance
+says don't count cancelled orders at all.
 
-"So I worked out all of them. If *late* means even one second past the promised time, it's
-fifty-six percent. Same orders — if *late* means more than ten minutes, it's twenty-three percent.
-Half of the late orders are under a minute and a half late.
+And the last line says it plainly — nobody officially owns this."
 
-This was my main decision. I could have picked one number and shown it. I didn't. Picking is a
-business call, not mine to make quietly in code. So the pipeline always shows both, and it flags
-every run that nobody owns the definition."
+**[Open `out/dashboard.html`]**
 
-**[Scroll to section 2 — the bar chart]**
+"So I ran all of them.
 
-"Then I looked at where the time actually goes.
+One second late gives fifty-six percent — exactly the number leadership already uses, so their
+maths is fine. The same orders on the ten-minute rule give twenty-three percent.
 
-Finding a driver — not slower on late orders. Driving to the customer — about four minutes slower.
-But between finding a driver and picking up the food — **seventeen minutes slower**. That one stage
-is eighty-one percent of the problem.
+And the typical late order missed by about a minute and a half. So that fifty-six percent is mostly
+orders late by seconds.
 
-So a tool that predicts the delay better would still not remove that wait. That's my answer: don't
-buy it yet. Fix the wait."
+**[Point at the curve]**
+
+This chart is every possible answer. Every point on it is a real, defensible late rate. The number
+slides from fifty-six down to eight just by moving one setting that nobody owns.
+
+The easy thing was to pick one, put it in the code, and hand over a clean single number. I decided
+that was the wrong thing to do. Choosing that line is a business decision, not an engineering one.
+If I bury it in code, I hide the most important thing I found."
+
+**[Open `src/flasheats/validate/rules.py`, scroll to `_kpi_definition_owner`]**
+
+"So the pipeline does two things instead. It publishes both numbers side by side, every single run.
+And this check here never passes — it is built to always come back *unknown*, and it stays unknown
+until a real person picks a definition.
+
+My checks have four results, not two: pass, warn, fail, and unknown. That fourth one lets the
+pipeline say *nobody has answered this yet* instead of quietly guessing."
+
+### 4. What that let me find · ~45 sec
+
+**[Dashboard, the bar chart]**
+
+"Because I wasn't stuck arguing about the number, I could look at the journey itself. I rebuilt
+every order, step by step, across all four systems.
+
+Finding a driver — not slower on late orders. Slightly faster, actually.
+
+Driving to the customer — about four minutes slower.
+
+But between picking a driver and collecting the food — seventeen minutes slower. That one gap is
+eighty-one percent of the problem.
+
+So the tool they wanted to buy would predict the delay more accurately and remove none of it.
+Don't buy it yet."
+
+### 5. What I could not prove · ~30 sec
+
+**[Open `ASSUMPTIONS.md`]**
+
+"And here's what I couldn't answer. Inside those seventeen minutes — is the restaurant slow, or is
+the driver turning up too early? Those need different fixes.
+
+I don't know. That data covers one order in ten, it's typed by hand, and some of it says the food
+was ready *after* it was collected — which can't happen. So I wrote it down as an open question
+instead of guessing."
+
+### 6. That it actually runs · ~30 sec
 
 **[Terminal]**
 
-"One command runs the whole thing, start to finish. Run it twice, you get the exact same answer.
-Break it on purpose, and it stops and publishes nothing.
+```
+make run
+```
+
+"One command runs the whole thing. It keeps a copy of every file it pulls, and running it twice
+gives the exact same answer.
+
+```
+make run CHAOS=stale_data
+```
+
+And if I break it on purpose — here, telling it the data is out of date — it stops, says why,
+and publishes nothing."
+
+### 7. Close · ~20 sec
+
+"So, the judgement call: they asked for one number. I gave them two, and told them who needs to
+choose. That mattered more than the number itself.
 
 Thanks for watching."
 
 ---
 
-### Recording notes
+## Recording notes
 
-- Have these open in tabs beforehand: `README.md`, `client_metric_definitions.json`,
-  `out/dashboard.html`, a terminal in the project folder.
-- Run `make run` once before recording so the dashboard exists.
-- If you have spare time, add the one line from the register: *"I also couldn't prove whether it's
-  the kitchen or the driver causing that wait — the data for it only covers one order in ten, so I
-  said so instead of guessing."* That sentence is worth more than anything else you could add.
-- Don't rush the fifty-six / twenty-three comparison. That is the whole demo.
+- **Open these tabs first:** the GitHub repo page, `client_metric_definitions.json`,
+  `out/dashboard.html`, `src/flasheats/validate/rules.py`, and a terminal in the project folder.
+- **Run `make run` once before recording** so Docker is warm — otherwise the live run pauses while
+  the containers wake up and you lose fifteen seconds of tape.
+- **Section 3 is the graded part.** The brief asks for *one* judgement call explained well, not a
+  feature tour. If you overrun, cut from section 6, never from section 3.
+- **Slow down on fifty-six versus twenty-three.** Let it sit for a beat. That comparison is the
+  entire point of the demo.
+- Say "I decided" and "I could have, but I didn't" out loud. The brief is marking your reasoning,
+  so the decision needs to sound like yours.
 
 ---
 
