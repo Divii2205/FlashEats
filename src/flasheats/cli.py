@@ -9,6 +9,7 @@ from datetime import date
 
 import pandas as pd
 
+from . import chaos
 from .config import CONFIG
 from .db import connect, read_df, run_sql_dir
 from .ingest import dispatch_api, files, sqlite_source
@@ -21,15 +22,16 @@ from .validate.rules import ORDER_RULES
 
 
 def cmd_init(_args) -> int:
-    """Create schemas and every DDL object. Safe to run repeatedly."""
+    """Create schemas and every DDL object. Safe to run repeatedly.
+
+    Only `sql/ddl` is applied here. `sql/transform` holds the per-run scripts, which are
+    parameterised on the logical run date and are meaningless without one — keeping the two in
+    separate directories is what stops a setup command from executing pipeline logic.
+    """
     with connect(CONFIG) as conn:
-        applied = []
-        for sub in ["ddl", "staging", "marts", "metrics"]:
-            directory = CONFIG.sql_dir / sub
-            if directory.exists():
-                applied += run_sql_dir(conn, directory)
+        applied = run_sql_dir(conn, CONFIG.sql_dir / "ddl")
         conn.commit()
-    print(f"warehouse initialised — applied {len(applied)} sql files: {', '.join(applied)}")
+    print(f"warehouse initialised — applied {len(applied)} DDL files: {', '.join(applied)}")
     return EXIT_OK
 
 
@@ -37,8 +39,9 @@ def cmd_run(args) -> int:
     run_date = args.run_date or date.today().isoformat()
 
     with connect(CONFIG) as conn:
-        ctx = RunContext(CONFIG, run_date, conn)
-        ctx.log.info("RUN START   run_id=%s run_date=%s", ctx.run_id, run_date)
+        ctx = RunContext(CONFIG, run_date, conn, chaos=args.chaos)
+        ctx.log.info("RUN START   run_id=%s run_date=%s%s", ctx.run_id, run_date,
+                     f" chaos={args.chaos}" if args.chaos else "")
         try:
             with ctx.step("ingest.sqlite") as r:
                 counts = sqlite_source.land(ctx)
@@ -119,8 +122,17 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("init", help="create warehouse schemas and tables")
 
-    run = sub.add_parser("run", help="run the pipeline for a logical run date")
+    run = sub.add_parser(
+        "run",
+        help="run the pipeline for a logical run date",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="fault injection (--chaos):\n" + chaos.describe(),
+    )
     run.add_argument("--run-date", help="logical partition date, YYYY-MM-DD")
+    run.add_argument(
+        "--chaos", choices=sorted(chaos.MODES),
+        help="deliberately corrupt an input to demonstrate the documented failure response",
+    )
 
     args = parser.parse_args(argv)
     return {"init": cmd_init, "run": cmd_run}[args.command](args)

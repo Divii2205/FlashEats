@@ -18,6 +18,7 @@ import time
 import pandas as pd
 import requests
 
+from .. import chaos
 from ..db import create_table_from_df, replace_partition
 from ..run_context import SourceUnreachable
 from . import manifest
@@ -27,7 +28,8 @@ RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
 
 def _get_page(ctx, page: int, statuses: list[str]) -> dict:
     cfg = ctx.cfg
-    url = f"{cfg.dispatch_api_url}/dispatch/orders"
+    base = chaos.dispatch_url(cfg.dispatch_api_url, getattr(ctx, "chaos", None), ctx.log)
+    url = f"{base}/dispatch/orders"
     params = {"page": page, "page_size": cfg.api_page_size}
 
     last_error = None

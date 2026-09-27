@@ -1,0 +1,63 @@
+flowchart TB
+    %% One command runs nine steps in order. Every step writes a row to meta.run_log.
+
+    subgraph ING["Ingest — retrieval, no casting"]
+        direction TB
+        S1["<b>1. ingest.sqlite</b><br/><i>SQL mode</i><br/>orders, customers,<br/>drivers, restaurants"]
+        S2["<b>2. ingest.files</b><br/><i>file + file_nested</i><br/>7 CSVs, driver_events.json<br/>120 drivers to 10,035 events"]
+        S3["<b>3. ingest.dispatch_api</b><br/><i>api mode</i><br/>32 pages, bounded retries<br/>500 on p3, 429 on p5"]
+    end
+
+    RAW[("<b>raw</b><br/>as-received TEXT<br/>24,929 rows landed")]
+
+    subgraph TRN["Transform"]
+        direction TB
+        S4["<b>4. transform.staging_orders</b><br/>typed, deduped<br/>conflicting dupes quarantined"]
+        S5["<b>5. transform.staging_sources</b><br/>casing, whitespace,<br/>category normalisation"]
+        S6["<b>6. transform.marts</b><br/>dimensions, event fact,<br/>lifecycle fact"]
+    end
+
+    STG[("<b>staging</b><br/>typed + normalised<br/>+ quarantine siblings")]
+    MRT[("<b>marts</b><br/>fct_order_lifecycle 1,600<br/>fct_order_events 10,121<br/>3 dimensions")]
+
+    S7{{"<b>7. validate</b><br/>order rules + cross-source rules<br/>PASS / WARN / UNKNOWN / FAIL"}}
+    GATE{"publish gate"}
+    STOP["<b>run aborts</b><br/>nothing published<br/>non-zero exit code"]
+
+    S8["<b>8. metrics</b><br/>M1 to M5 computed<br/>only from the lifecycle fact"]
+    MET[("<b>metrics</b><br/>metrics.kpi<br/>value + numerator<br/>+ denominator + caveat")]
+    S9["<b>9. publish</b><br/>metrics.csv,<br/>evidence_table.md,<br/>validation_report.json"]
+    OUT["out/"]
+
+    META[("<b>meta</b><br/>run_log<br/>source_manifest<br/>validation_results")]
+
+    S1 --> RAW
+    S2 --> RAW
+    S3 --> RAW
+    RAW --> S4 --> STG
+    RAW --> S5 --> STG
+    STG --> S6 --> MRT
+    RAW -->|"dimensions read raw directly"| S6
+    MRT --> S7 --> GATE
+    GATE -->|"FAIL — only FAIL blocks"| STOP
+    GATE -->|"PASS, WARN or UNKNOWN<br/>carried onto the report"| S8
+    S8 --> MET --> S9 --> OUT
+
+    S1 -.->|"source_manifest"| META
+    S2 -.->|"source_manifest"| META
+    S3 -.->|"source_manifest<br/>http statuses + retries"| META
+    S4 -.->|"run_log"| META
+    S5 -.->|"run_log"| META
+    S6 -.->|"run_log"| META
+    S7 -.->|"validation_results<br/>one row per rule"| META
+    S8 -.->|"run_log"| META
+    S9 -.->|"run_log"| META
+
+    classDef step  fill:#e8f0fe,stroke:#4285f4,color:#111
+    classDef store fill:#e6f4ea,stroke:#34a853,color:#111
+    classDef gate  fill:#fef7e0,stroke:#f9ab00,color:#111
+    classDef stop  fill:#fce8e6,stroke:#ea4335,color:#111
+    class S1,S2,S3,S4,S5,S6,S8,S9 step
+    class RAW,STG,MRT,MET,OUT store
+    class S7,GATE,META gate
+    class STOP stop

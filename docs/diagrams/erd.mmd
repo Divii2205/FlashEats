@@ -1,0 +1,167 @@
+erDiagram
+    %% Workflow model. marts.fct_order_lifecycle is the order-grain spine;
+    %% four source systems have to agree on one order for a full row to exist.
+
+    fct_order_lifecycle {
+        text     order_id            PK "one row per order per run_date, 1600 rows"
+        text     customer_id         FK "dim_customer"
+        text     restaurant_id       FK "dim_restaurant"
+        text     driver_id           FK "dim_driver"
+        text     city                   "segment"
+        text     daypart                "derived from created_at hour"
+        ts       created_at             "stage 1, SQLite orders"
+        ts       assigned_at            "stage 2, Dispatch API"
+        ts       ready_at               "stage 3, restaurant_status, 160 of 1600"
+        ts       pickup_at              "stage 4, SQLite orders"
+        ts       delivered_at           "stage 5, SQLite orders"
+        ts       promised_eta           "the benchmark, not a stage"
+        numeric  dispatch_latency_min   "created to assigned, NULL if endpoint missing"
+        numeric  assign_to_pickup_min   "assigned to pickup, carries 81.2 pct of excess"
+        numeric  idle_wait_min          "ready to pickup, nested inside assign_to_pickup"
+        numeric  transit_min            "pickup to delivered"
+        numeric  end_to_end_min         "created to delivered"
+        text     final_status           "delivered or cancelled"
+        numeric  delay_min              "delivered minus promised_eta"
+        bool     is_late_strict         "delay over 0"
+        bool     is_late_material       "delay over threshold"
+        bool     is_measurable          "delivered and delay known, 1495 rows"
+        int      interaction_count      "customer_app_actions"
+        int      eta_view_count         "ETA_VIEWED, anxiety proxy"
+        int      complaint_count        "customer_interactions SUPPORT_TICKET"
+        int      intervention_count     "order_interventions"
+        text     intervention_types     "distinct types, comma joined"
+        bool     had_conflicting_dupe   "3 orders"
+        bool     has_negative_duration  "79 orders"
+        date     run_date            PK "logical partition"
+    }
+
+    fct_order_events {
+        text order_id      FK "nullable order_ids are dropped at the union"
+        text event_type       "state transition, not telemetry"
+        ts   event_time
+        text actor_type       "driver, restaurant, system"
+        text actor_id
+        text source_system    "order_platform 4955, driver_app 4664, restaurant_ops 502"
+        date run_date      PK "10121 events total"
+    }
+
+    dim_restaurant {
+        text    restaurant_id         PK "60 rows"
+        text    restaurant_name
+        text    cuisine
+        numeric lat
+        numeric lon
+        bool    manual_status_updates    "flags the manual entry behind gap G-04"
+        date    run_date              PK
+    }
+
+    dim_driver {
+        text driver_id         PK "120 rows"
+        numeric rating
+        text vehicle_type
+        int  experience_months
+        text experience_band      "0-5m, 6-11m, 12-23m, 24m+"
+        date run_date          PK
+    }
+
+    dim_customer {
+        text    customer_id PK "900 rows"
+        numeric lat
+        numeric lon
+        date    run_date    PK
+    }
+
+    staging_orders {
+        text order_id             PK "the spine, 1600 unique of 1603 landed"
+        ts   created_at
+        ts   promised_eta
+        ts   pickup_at
+        ts   actual_delivery_at
+        text final_status
+        bool had_conflicting_dupe    "losing copy sent to quarantine_orders"
+        date run_date              PK
+    }
+
+    staging_dispatch {
+        text order_id          PK "Dispatch API, 32 pages"
+        ts   assigned_at
+        ts   reassigned_at
+        text eta_model_version
+        bool was_reassigned
+        date run_date          PK
+    }
+
+    staging_restaurant_status {
+        text order_id           "502 updates, duplicate order_ids"
+        text status             "normalised, earliest ready wins"
+        ts   last_updated_at
+        date run_date        PK
+    }
+
+    staging_order_events {
+        text event_id    PK "4955 rows"
+        text order_id
+        text event_type
+        ts   event_time
+        date run_date
+    }
+
+    staging_driver_events {
+        text driver_id      "10035 events from 120 drivers"
+        text order_id
+        text event_type     "5371 gps_ping rows excluded from the fact"
+        ts   event_time
+        date run_date    PK
+    }
+
+    staging_customer_app_actions {
+        text action_id PK "2365 rows"
+        text order_id
+        text action_type
+        date run_date
+    }
+
+    staging_customer_interactions {
+        text interaction_id   PK "497 rows"
+        text order_id
+        text interaction_type    "SUPPORT_TICKET is the complaint signal"
+        date run_date
+    }
+
+    staging_order_interventions {
+        text intervention_id   PK "430 rows"
+        text order_id
+        text intervention_type
+        date run_date
+    }
+
+    staging_client_order_outcomes {
+        text    order_id   PK "derived client file, 1600 rows"
+        numeric late_flag     "encodes the disputed 56.39 pct"
+        numeric delay_min
+        date    run_date
+    }
+
+    %% Dimensional context
+    dim_customer   ||--o{ fct_order_lifecycle : "places"
+    dim_restaurant ||--o{ fct_order_lifecycle : "prepares for"
+    dim_driver     ||--o{ fct_order_lifecycle : "delivers"
+
+    %% Order grain to event grain
+    fct_order_lifecycle ||--o{ fct_order_events : "is observed as"
+
+    %% Staging inputs to the lifecycle fact
+    staging_orders                ||--|| fct_order_lifecycle : "spine, order grain"
+    staging_dispatch              |o--|| fct_order_lifecycle : "assigned_at, eta model"
+    staging_restaurant_status     }o--|| fct_order_lifecycle : "earliest ready_at"
+    staging_customer_app_actions  }o--|| fct_order_lifecycle : "interaction counts"
+    staging_customer_interactions }o--|| fct_order_lifecycle : "complaint count"
+    staging_order_interventions   }o--|| fct_order_lifecycle : "intervention counts"
+
+    %% Staging inputs to the event fact
+    staging_order_events      }o--|| fct_order_events : "order_platform"
+    staging_driver_events     }o--|| fct_order_events : "driver_app, no gps_ping"
+    staging_restaurant_status }o--|| fct_order_events : "restaurant_ops"
+
+    %% Never consumed, only reconciled against
+    staging_client_order_outcomes ||..|| fct_order_lifecycle : "reconciled against, never read"

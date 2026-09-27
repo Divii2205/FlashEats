@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from . import dashboard
+
 
 def publish(ctx, metrics: pd.DataFrame, validation_report: dict) -> dict[str, Path]:
     out = ctx.cfg.out_dir
@@ -35,5 +37,7 @@ def publish(ctx, metrics: pd.DataFrame, validation_report: dict) -> dict[str, Pa
     ]
     md_path.write_text("\n".join(lines), encoding="utf-8")
 
-    ctx.log.info("PUBLISHED   %s and %s", csv_path.name, md_path.name)
-    return {"metrics_csv": csv_path, "evidence_table": md_path}
+    html_path = dashboard.build(ctx, metrics, validation_report)
+
+    ctx.log.info("PUBLISHED   %s, %s, %s", csv_path.name, md_path.name, html_path.name)
+    return {"metrics_csv": csv_path, "evidence_table": md_path, "dashboard": html_path}

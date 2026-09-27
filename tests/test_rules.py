@@ -68,3 +68,31 @@ def test_freshness_passes_inside_the_window():
 def test_kpi_definition_owner_is_unknown_by_design():
     """This rule must never report PASS: the ambiguity is real until a human resolves it."""
     assert rules._kpi_definition_owner(_orders()).status == "UNKNOWN"
+
+
+def test_measurable_population_passes_on_a_healthy_frame():
+    result = rules._measurable_population(_orders())
+    assert result.status == "PASS"
+    assert result.observed == 100.0
+
+
+def test_measurable_population_fails_when_it_collapses_to_zero():
+    """Without this the run does not stop — it emits null metrics and fails later with an error
+    that says nothing about the cause."""
+    df = _orders(promised_eta=[pd.NaT, pd.NaT])
+    assert rules._measurable_population(df).status == "FAIL"
+
+
+def test_measurable_population_fails_below_half_coverage():
+    """Three orders, one measurable: 33% coverage says more about instrumentation than delivery."""
+    df = pd.concat([_orders(), _orders().head(1)], ignore_index=True)
+    df["actual_delivery_at"] = [pd.Timestamp("2026-08-01 10:50"), pd.NaT, pd.NaT]
+    result = rules._measurable_population(df)
+    assert result.status == "FAIL"
+    assert result.observed == pytest.approx(33.3, abs=0.1)
+
+
+def test_measurable_population_passes_at_exactly_half():
+    """The threshold is 'below half', so the boundary itself is acceptable."""
+    df = _orders(actual_delivery_at=[pd.NaT, pd.Timestamp("2026-08-01 11:40")])
+    assert rules._measurable_population(df).status == "PASS"

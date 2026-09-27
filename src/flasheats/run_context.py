@@ -36,10 +36,12 @@ class ConfigError(PipelineError):
 
 
 class RunContext:
-    def __init__(self, cfg: Config, run_date: str, conn: psycopg.Connection):
+    def __init__(self, cfg: Config, run_date: str, conn: psycopg.Connection,
+                 chaos: str | None = None):
         self.cfg = cfg
         self.run_date = run_date
         self.conn = conn
+        self.chaos = chaos
         self.run_id = f"{run_date}__{uuid.uuid4().hex[:8]}"
         self.log = get_logger(self.run_id, cfg.log_dir)
 

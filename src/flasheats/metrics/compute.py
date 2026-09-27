@@ -14,7 +14,7 @@ from ..db import read_df, run_sql_file
 def compute_all(ctx) -> pd.DataFrame:
     run_sql_file(
         ctx.conn,
-        ctx.cfg.sql_dir / "metrics" / "010_compute.sql",
+        ctx.cfg.sql_dir / "transform" / "030_metrics.sql",
         {
             "run_date": ctx.run_date,
             "material_threshold": ctx.cfg.material_late_threshold_min,

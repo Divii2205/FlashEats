@@ -107,3 +107,57 @@ assigned→pickup delay into *kitchen was slow* versus *driver arrived early* re
 READY timestamps, which exist for only 160 of 1,600 orders and are 37% negative where present.
 Forcing that into `PASS` or `FAIL` would misrepresent it. `UNKNOWN` says the honest thing: this is
 an instrumentation gap, and the answer is not available at current coverage.
+
+---
+
+## D-007 — Dimensions are built directly from `raw`, bypassing `staging`
+
+**Context.** The warehouse is described as `raw → staging → marts`, and the three *facts* follow
+that path. The three dimensions (`dim_restaurant`, `dim_driver`, `dim_customer`) do not — they are
+built straight from `raw` in `sql/transform/020_marts.sql` with inline casts.
+
+**Decision.** Keep it, and document it as a deliberate exception rather than claim a layering the
+code does not follow.
+
+**Why.** `staging` exists to hold work that has to happen *before* modelling and that can fail:
+type coercion that may reject rows, cross-source key normalisation, deduplication, and quarantine.
+The dimension sources have none of that. They are small, single-sourced, have no duplicate keys and
+no cross-source reconciliation, so a staging hop for them would contain a type cast and nothing
+else — a layer that exists only to satisfy a diagram.
+
+The modelling that *is* applied to them — banding `experience_months` into tenure buckets, casting
+`manual_status_updates` to a boolean, trimming names — is dimensional attribute design, which
+belongs in the marts layer by definition.
+
+**To change this:** the moment a dimension needs conflict resolution across two sources (for
+example if `restaurants.csv` and the `restaurants` table start disagreeing — currently checked by
+`cross.restaurant_agreement` and currently in agreement), it earns a staging table, because that
+reconciliation can reject rows and rejected rows need somewhere to go.
+
+---
+
+## D-008 — Source schema drift is caught at ingest, not at the validation gate
+
+**Context.** Fault-injecting a dropped column (`--chaos missing_column`) exposed a real defect. The
+run passed the validation gate and then crashed several steps later inside metric computation with
+`float() argument must be a string or a real number, not 'NoneType'`.
+
+**Root cause.** The `raw` tables persist between runs. When a column stops arriving from the
+source, the table still *has* that column — every value for the new run is simply NULL. A gate rule
+asking "is this column present?" therefore passes, every downstream metric still computes, and the
+pipeline produces a confidently wrong number instead of an error.
+
+**Decision.** Enforce a schema contract at ingest, against the dataframe as extracted, before
+anything is written. `assert_contract()` in `src/flasheats/ingest/sqlite_source.py` checks
+`SOURCE_CONTRACT` and raises `ValidationFailed` (exit 1) with a message naming the missing column
+and stating that nothing was landed. `orders.required_columns` stays in the gate as a second line
+of defence.
+
+**Also added:** `orders.measurable_population`, a FAIL rule that stops the run when the measurable
+population collapses to zero or falls below half of all orders. A rate computed over a collapsed
+denominator is not a performance signal, and failing at the gate names the real problem where the
+original crash did not.
+
+**Why this matters beyond the injected fault.** The failure was not that the pipeline broke — it
+was that it very nearly *didn't*. Schema drift is a routine upstream event, and the shape of this
+bug is one where the run goes green and a wrong number reaches a decision-maker.

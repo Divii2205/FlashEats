@@ -107,6 +107,29 @@ def _freshness(orders: pd.DataFrame, run_date=None, max_age_days=None, **_) -> R
                       f"latest created_at={latest}; age_days={age}; allowed={max_age_days}")
 
 
+def _measurable_population(orders: pd.DataFrame, **_) -> RuleResult:
+    """There must be something left to measure.
+
+    If the measurable population collapses to zero, every rate downstream becomes a division by
+    nothing. Without this check the run does not stop — it produces null metrics and then fails
+    somewhere further downstream with an error that says nothing about the actual cause.
+    """
+    delivered = orders["final_status"].eq("delivered")
+    measurable = int((delivered & orders["actual_delivery_at"].notna()
+                      & orders["promised_eta"].notna()).sum())
+    total = len(orders)
+    share = measurable / total * 100 if total else 0.0
+
+    if measurable == 0:
+        return RuleResult("FAIL", 0, 1, "no measurable deliveries at all — no KPI can be computed")
+    if share < 50:
+        return RuleResult("FAIL", round(share, 1), 50.0,
+                          f"only {measurable} of {total} orders ({share:.1f}%) are measurable; "
+                          f"below half, the rate says more about coverage than about performance")
+    return RuleResult("PASS", round(share, 1), 50.0,
+                      f"{measurable} of {total} orders ({share:.1f}%) are measurable")
+
+
 def _kpi_definition_owner(orders: pd.DataFrame, **_) -> RuleResult:
     """The single most important finding in this dataset, encoded as a standing check.
 
@@ -130,6 +153,9 @@ ORDER_RULES: list[Rule] = [
          "A negative order lifespan means timestamps cannot be trusted at all.", _delivery_after_creation),
     Rule("orders.freshness", "FAIL", "staging.orders", "Platform / Ops",
          "A stale extract silently republishes yesterday's number as today's.", _freshness),
+    Rule("orders.measurable_population", "FAIL", "staging.orders", "VP Operations",
+         "A rate computed over a collapsed population is not a performance signal.",
+         _measurable_population),
     Rule("orders.order_id_unique", "WARN", "raw.orders", "Order Platform team",
          "Duplicate writes inflate volume-based denominators.", _order_id_unique),
     Rule("orders.conflicting_duplicates", "WARN", "staging.orders", "Order Platform team",
