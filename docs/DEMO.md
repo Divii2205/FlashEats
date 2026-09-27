@@ -1,4 +1,64 @@
-# Demo script — 3 to 5 minutes
+# Demo script — short version (record this one, ~1 min 50)
+
+Plain words. Five beats. Screen cue in brackets, then what you say.
+
+---
+
+**[Show README]**
+
+"FlashEats came to us with a problem. Deliveries are late, and customers say the ETA can't be
+trusted. They want to buy an AI tool that predicts delays. They asked me to check first."
+
+**[Open `sources/data/client_metric_definitions.json`]**
+
+"Their number is fifty-six percent late. But look at this file. Four people at the company each
+mean something different by the word *late*. And the last line says nobody owns the definition."
+
+**[Open `out/dashboard.html` — top]**
+
+"So I worked out all of them. If *late* means even one second past the promised time, it's
+fifty-six percent. Same orders — if *late* means more than ten minutes, it's twenty-three percent.
+Half of the late orders are under a minute and a half late.
+
+This was my main decision. I could have picked one number and shown it. I didn't. Picking is a
+business call, not mine to make quietly in code. So the pipeline always shows both, and it flags
+every run that nobody owns the definition."
+
+**[Scroll to section 2 — the bar chart]**
+
+"Then I looked at where the time actually goes.
+
+Finding a driver — not slower on late orders. Driving to the customer — about four minutes slower.
+But between finding a driver and picking up the food — **seventeen minutes slower**. That one stage
+is eighty-one percent of the problem.
+
+So a tool that predicts the delay better would still not remove that wait. That's my answer: don't
+buy it yet. Fix the wait."
+
+**[Terminal]**
+
+"One command runs the whole thing, start to finish. Run it twice, you get the exact same answer.
+Break it on purpose, and it stops and publishes nothing.
+
+Thanks for watching."
+
+---
+
+### Recording notes
+
+- Have these open in tabs beforehand: `README.md`, `client_metric_definitions.json`,
+  `out/dashboard.html`, a terminal in the project folder.
+- Run `make run` once before recording so the dashboard exists.
+- If you have spare time, add the one line from the register: *"I also couldn't prove whether it's
+  the kitchen or the driver causing that wait — the data for it only covers one order in ten, so I
+  said so instead of guessing."* That sentence is worth more than anything else you could add.
+- Don't rush the fifty-six / twenty-three comparison. That is the whole demo.
+
+---
+
+# Demo script — long version (3 to 5 minutes)
+
+Keep as backup, or for questions afterwards.
 
 The brief asks for one important FDE judgement call, explained using the repository. This is that
 call, with the exact commands and the exact things to say.

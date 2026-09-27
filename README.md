@@ -138,13 +138,25 @@ rather than accumulating.
 ### Failure handling
 
 ```bash
-make run --chaos missing_column    # exit 1 — schema drift caught at ingest, nothing landed
-make run --chaos stale_data        # exit 1 — freshness check fails, nothing published
-make run --chaos duplicate_order   # exit 0 — WARN, order grain held
-make run --chaos api_down          # exit 2 — bounded retries, then source unreachable
+make run CHAOS=missing_column    # exit 1 — schema drift caught at ingest, nothing landed
+make run CHAOS=stale_data        # exit 1 — freshness check fails, nothing published
+make run CHAOS=duplicate_order   # exit 0 — WARN, order grain held
+make run CHAOS=api_down          # exit 2 — bounded retries, then source unreachable
 ```
 
 Exit codes: `0` ok · `1` validation failure · `2` source unreachable · `3` config error.
+
+### Without `make`
+
+Every target is a one-line command. `run_pipeline.py` sets its own import path, so no environment
+variables are needed and it behaves the same in bash, cmd.exe and PowerShell:
+
+```bash
+python run_pipeline.py init
+python run_pipeline.py run --run-date 2026-08-29
+python run_pipeline.py run --run-date 2026-08-29 --chaos stale_data
+python -m pytest -q
+```
 
 ---
 
